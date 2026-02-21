@@ -78,7 +78,7 @@ Item {
                 color: Colours.palette.m3onTertiary
 
                 function onClicked(): void {
-                    Quickshell.execDetached(["app2unit", "--", ...Config.general.apps.terminal, "fish", "-C", `exec qalc -i '${root.math}'`]);
+                    Quickshell.execDetached(["app2unit", "--", ...Config.general.apps.terminal, "qalc", "-i", root.math]);
                     root.list.visibilities.launcher = false;
                 }
             }

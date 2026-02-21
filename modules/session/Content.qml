@@ -19,7 +19,9 @@ Column {
         id: logout
 
         icon: Config.session.icons.logout
-        command: Config.session.commands.logout
+        // Replace any empty-string placeholder in the logout command with the real username,
+        // so loginctl terminate-user receives a valid argument (not an empty string).
+        command: Config.session.commands.logout.map(arg => arg === "" ? SysInfo.user : arg)
 
         KeyNavigation.down: shutdown
 

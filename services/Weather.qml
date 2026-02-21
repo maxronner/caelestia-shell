@@ -26,23 +26,45 @@ Singleton {
 
     readonly property var cachedCities: new Map()
 
+    // Validates a coordinate string is a numeric lat/lon pair within valid ranges.
+    // Rejects any non-numeric content that could pollute API URLs.
+    function isValidCoords(coords: string): bool {
+        if (!coords || coords.indexOf(",") === -1)
+            return false;
+        const parts = coords.split(",");
+        if (parts.length !== 2)
+            return false;
+        const lat = parseFloat(parts[0]);
+        const lon = parseFloat(parts[1]);
+        return !isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+    }
+
     function reload(): void {
         const configLocation = Config.services.weatherLocation;
 
         if (configLocation) {
-            if (configLocation.indexOf(",") !== -1 && !isNaN(parseFloat(configLocation.split(",")[0]))) {
+            if (isValidCoords(configLocation)) {
                 loc = configLocation;
                 fetchCityFromCoords(configLocation);
             } else {
                 fetchCoordsFromCity(configLocation);
             }
         } else if (!loc || timer.elapsed() > 900) {
+            // IP geolocation requires opt-in via Config.services.weatherAutoLocate
+            // because it sends the user's IP address to a third-party service (ipinfo.io).
+            if (!Config.services.weatherAutoLocate) {
+                return;
+            }
             Requests.get("https://ipinfo.io/json", text => {
-                const response = JSON.parse(text);
-                if (response.loc) {
-                    loc = response.loc;
-                    city = response.city ?? "";
-                    timer.restart();
+                try {
+                    const response = JSON.parse(text);
+                    if (response.loc && isValidCoords(response.loc)) {
+                        loc = response.loc;
+                        city = response.city ?? "";
+                        timer.restart();
+                    }
+                } catch (e) {
+                    console.warn("Weather: failed to parse ipinfo.io response:", e);
                 }
             });
         }
@@ -54,16 +76,28 @@ Singleton {
             return;
         }
 
-        const [lat, lon] = coords.split(",");
+        // Validate coords before interpolating into URL
+        if (!isValidCoords(coords)) {
+            console.warn("Weather: fetchCityFromCoords rejected invalid coords:", coords);
+            return;
+        }
+
+        const parts = coords.split(",");
+        const lat = encodeURIComponent(parts[0]);
+        const lon = encodeURIComponent(parts[1]);
         const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=geocodejson`;
         Requests.get(url, text => {
-            const geo = JSON.parse(text).features?.[0]?.properties.geocoding;
-            if (geo) {
-                const geoCity = geo.type === "city" ? geo.name : geo.city;
-                city = geoCity;
-                cachedCities.set(coords, geoCity);
-            } else {
-                city = "Unknown City";
+            try {
+                const geo = JSON.parse(text).features?.[0]?.properties.geocoding;
+                if (geo) {
+                    const geoCity = geo.type === "city" ? geo.name : geo.city;
+                    city = geoCity;
+                    cachedCities.set(coords, geoCity);
+                } else {
+                    city = "Unknown City";
+                }
+            } catch (e) {
+                console.warn("Weather: failed to parse reverse geocode response:", e);
             }
         });
     }
@@ -72,14 +106,22 @@ Singleton {
         const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en&format=json`;
 
         Requests.get(url, text => {
-            const json = JSON.parse(text);
-            if (json.results && json.results.length > 0) {
-                const result = json.results[0];
-                loc = result.latitude + "," + result.longitude;
-                city = result.name;
-            } else {
-                loc = "";
-                reload();
+            try {
+                const json = JSON.parse(text);
+                if (json.results && json.results.length > 0) {
+                    const result = json.results[0];
+                    const newLat = parseFloat(result.latitude);
+                    const newLon = parseFloat(result.longitude);
+                    if (!isNaN(newLat) && !isNaN(newLon)) {
+                        loc = newLat + "," + newLon;
+                        city = result.name;
+                    }
+                } else {
+                    loc = "";
+                    reload();
+                }
+            } catch (e) {
+                console.warn("Weather: failed to parse geocoding response:", e);
             }
         });
     }
@@ -90,6 +132,7 @@ Singleton {
             return;
 
         Requests.get(url, text => {
+            try {
             const json = JSON.parse(text);
             if (!json.current || !json.daily)
                 return;
@@ -138,6 +181,9 @@ Singleton {
                 });
             }
             hourlyForecast = hourlyList;
+            } catch (e) {
+                console.warn("Weather: failed to parse weather data response:", e);
+            }
         });
     }
 
@@ -146,10 +192,12 @@ Singleton {
     }
 
     function getWeatherUrl(): string {
-        if (!loc || loc.indexOf(",") === -1)
+        if (!isValidCoords(loc))
             return "";
 
-        const [lat, lon] = loc.split(",");
+        const parts = loc.split(",");
+        const lat = encodeURIComponent(parts[0]);
+        const lon = encodeURIComponent(parts[1]);
         const baseUrl = "https://api.open-meteo.com/v1/forecast";
         const params = ["latitude=" + lat, "longitude=" + lon, "hourly=weather_code,temperature_2m", "daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset", "current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m", "timezone=auto", "forecast_days=7"];
 

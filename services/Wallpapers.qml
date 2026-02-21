@@ -53,6 +53,13 @@ Searcher {
         }
 
         function set(path: string): void {
+            // Validate the path is under the configured wallpapers directory
+            // to prevent IPC callers from injecting arbitrary paths.
+            const wallsdir = Paths.wallsdir;
+            if (!wallsdir || !path.startsWith(wallsdir + "/")) {
+                console.warn("Wallpapers IPC: rejected path outside wallsdir:", path);
+                return;
+            }
             root.setWallpaper(path);
         }
 

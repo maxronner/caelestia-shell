@@ -3,6 +3,7 @@
 #include <QtQuick/qquickitem.h>
 #include <qobject.h>
 #include <qqmlintegration.h>
+#include <qstandardpaths.h>
 
 namespace caelestia {
 
@@ -24,6 +25,11 @@ public:
     Q_INVOKABLE bool copyFile(const QUrl& source, const QUrl& target, bool overwrite = true) const;
     Q_INVOKABLE bool deleteFile(const QUrl& path) const;
     Q_INVOKABLE QString toLocalFile(const QUrl& url) const;
+
+private:
+    // Returns true if the resolved local path is under the user's home directory.
+    // This prevents path-traversal attacks that could reach sensitive files outside HOME.
+    [[nodiscard]] static bool isPathWithinHome(const QString& localPath);
 };
 
 } // namespace caelestia

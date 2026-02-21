@@ -28,7 +28,14 @@ Singleton {
     }
 
     function absolutePath(path: string): string {
-        return toLocalFile(path.replace(/~|(\$({?)HOME(}?))+/, home));
+        const expanded = path.replace(/~|(\$({?)HOME(}?))+/, home);
+        const resolved = toLocalFile(expanded);
+        // Reject paths that escape the home directory via traversal
+        if (resolved && !resolved.startsWith(home + "/") && resolved !== home) {
+            console.warn("Paths.absolutePath: rejected path outside home directory:", path);
+            return "";
+        }
+        return resolved;
     }
 
     function shortenHome(path: string): string {

@@ -38,13 +38,24 @@ Singleton {
         return defaults;
     }
 
+    // Validates a network interface name: letters, digits, underscores, hyphens, max 15 chars.
+    // This is enforced before passing the interface name to pkexec wg-quick.
+    function isValidInterface(iface) {
+        return typeof iface === "string" && /^[a-zA-Z0-9_-]{1,15}$/.test(iface);
+    }
+
     function getBuiltinDefaults(name, iface) {
+        // Validate interface name before using it in a pkexec command
+        const safeIface = isValidInterface(iface) ? iface : "";
+        if (iface && !safeIface) {
+            console.warn("VPN: rejected invalid interface name:", iface);
+        }
         const builtins = {
             "wireguard": {
-                connectCmd: ["pkexec", "wg-quick", "up", iface],
-                disconnectCmd: ["pkexec", "wg-quick", "down", iface],
-                interface: iface,
-                displayName: iface
+                connectCmd: safeIface ? ["pkexec", "wg-quick", "up", safeIface] : [],
+                disconnectCmd: safeIface ? ["pkexec", "wg-quick", "down", safeIface] : [],
+                interface: safeIface,
+                displayName: safeIface
             },
             "warp": {
                 connectCmd: ["warp-cli", "connect"],

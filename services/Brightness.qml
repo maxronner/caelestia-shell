@@ -168,8 +168,11 @@ Singleton {
                         const val = parseInt(text.trim());
                         monitor.brightness = val / 101;
                     } else {
-                        const [, , , cur, max] = text.split(" ");
-                        monitor.brightness = parseInt(cur) / parseInt(max);
+                        // brightnessctl -m outputs CSV: name,class,value,max,percentage%
+                        const parts = text.trim().split(",");
+                        const cur = parseInt(parts[2], 10);
+                        const max = parseInt(parts[3], 10);
+                        monitor.brightness = (max > 0) ? (cur / max) : 0;
                     }
                 }
             }
@@ -215,7 +218,12 @@ Singleton {
             else if (isDdc)
                 initProc.command = ["ddcutil", "-b", busNum, "getvcp", "10", "--brief"];
             else
-                initProc.command = ["sh", "-c", "echo a b c $(brightnessctl g) $(brightnessctl m)"];
+                // Use brightnessctl's machine-readable format instead of sh -c with
+                // command substitution, to avoid unnecessary shell expansion.
+                // Output format: "Device 'X' of class 'Y':\n\tCurrent brightness: N (M%)\n\tMax brightness: M"
+                // We still need both current and max; use -m flag for machine-readable CSV output:
+                // "name,class,value,max,percentage\n"
+                initProc.command = ["brightnessctl", "-m"];
 
             initProc.running = true;
         }

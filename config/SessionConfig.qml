@@ -17,6 +17,9 @@ JsonObject {
     }
 
     component Commands: JsonObject {
+        // loginctl terminate-user requires the current username.
+        // The empty string placeholder is intentionally left here so the session module
+        // can substitute SysInfo.user at invocation time; see modules/session/Content.qml.
         property list<string> logout: ["loginctl", "terminate-user", ""]
         property list<string> shutdown: ["systemctl", "poweroff"]
         property list<string> hibernate: ["systemctl", "hibernate"]

@@ -7,6 +7,17 @@
 
 namespace caelestia::internal::hypr {
 
+// Hyprland's [[BATCH]] protocol uses ';' as a command separator.
+// Strip ';' and newlines from individual messages/values to prevent
+// injection of additional commands when concatenated into a batch request.
+static QString sanitizeHyprToken(const QString& token) {
+    QString s = token;
+    s.remove(QLatin1Char(';'));
+    s.remove(QLatin1Char('\n'));
+    s.remove(QLatin1Char('\r'));
+    return s;
+}
+
 HyprExtras::HyprExtras(QObject* parent)
     : QObject(parent)
     , m_requestSocket("")
@@ -72,7 +83,15 @@ void HyprExtras::batchMessage(const QStringList& messages) {
         return;
     }
 
-    makeRequest("[[BATCH]]" + messages.join(";"), [](bool success, const QByteArray& res) {
+    // Sanitize each message to remove ';' (Hyprland batch separator) and
+    // newlines to prevent injection of additional IPC commands.
+    QStringList sanitized;
+    sanitized.reserve(messages.size());
+    for (const auto& msg : messages) {
+        sanitized.append(sanitizeHyprToken(msg));
+    }
+
+    makeRequest("[[BATCH]]" + sanitized.join(";"), [](bool success, const QByteArray& res) {
         if (!success) {
             qWarning() << "HyprExtras::batchMessage: request error:" << QString::fromUtf8(res);
         }
@@ -84,9 +103,13 @@ void HyprExtras::applyOptions(const QVariantHash& options) {
         return;
     }
 
+    // Sanitize keys and values to remove ';' and newlines before
+    // concatenating into a Hyprland [[BATCH]] keyword request.
     QString request = "[[BATCH]]";
     for (auto it = options.constBegin(); it != options.constEnd(); ++it) {
-        request += QString("keyword %1 %2;").arg(it.key(), it.value().toString());
+        const QString key = sanitizeHyprToken(it.key());
+        const QString value = sanitizeHyprToken(it.value().toString());
+        request += QString("keyword %1 %2;").arg(key, value);
     }
 
     makeRequest(request, [this](bool success, const QByteArray& res) {

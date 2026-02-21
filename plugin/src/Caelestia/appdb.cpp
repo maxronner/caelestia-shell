@@ -188,9 +188,9 @@ void AppDb::setFavouriteApps(const QStringList& favApps) {
 }
 
 QString AppDb::regexifyString(const QString& original) const {
-    if (original.startsWith('^') && original.endsWith('$'))
-        return original;
-
+    // Always escape the input — do not pass raw regex through even if it looks like
+    // a full-match pattern (^...$). Allowing raw regex from config enables ReDoS
+    // attacks via catastrophic backtracking patterns in the favouriteApps list.
     const QString escaped = QRegularExpression::escape(original);
     return QStringLiteral("^%1$").arg(escaped);
 }

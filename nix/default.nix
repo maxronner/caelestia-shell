@@ -4,13 +4,11 @@
   stdenv,
   makeWrapper,
   makeFontsConf,
-  fish,
   ddcutil,
   brightnessctl,
   app2unit,
   networkmanager,
   lm_sensors,
-  swappy,
   wl-clipboard,
   libqalculate,
   bash,
@@ -37,13 +35,11 @@
 
   runtimeDeps =
     [
-      fish
       ddcutil
       brightnessctl
       app2unit
       networkmanager
       lm_sensors
-      swappy
       wl-clipboard
       libqalculate
       bash

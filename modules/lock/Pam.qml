@@ -131,7 +131,7 @@ Scope {
     Process {
         id: availProc
 
-        command: ["sh", "-c", "fprintd-list $USER"]
+        command: ["fprintd-list", Quickshell.env("USER")]
         onExited: code => {
             fprint.available = code === 0;
             fprint.checkAvail();

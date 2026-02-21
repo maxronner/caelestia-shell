@@ -16,6 +16,18 @@ void Requests::get(const QUrl& url, QJSValue onSuccess, QJSValue onError) const 
         return;
     }
 
+    // Restrict to http/https only. Qt's QNetworkAccessManager also handles file://
+    // and qrc:// schemes natively, which would allow reading arbitrary local files
+    // if called with a crafted URL from QML.
+    const QString scheme = url.scheme().toLower();
+    if (scheme != QLatin1String("http") && scheme != QLatin1String("https")) {
+        qWarning() << "Requests::get: rejected non-http(s) URL scheme:" << scheme;
+        if (onError.isCallable()) {
+            onError.call({ QStringLiteral("Only http and https URLs are permitted") });
+        }
+        return;
+    }
+
     QNetworkRequest request(url);
     auto reply = m_manager->get(request);
 

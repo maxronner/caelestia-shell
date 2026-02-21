@@ -232,6 +232,9 @@ Singleton {
         id: gpuNameDetect
 
         running: true
+        // These sh -c commands use only hardcoded strings — no user-controlled input
+        // is interpolated, so shell injection is not possible here. The pipeline is
+        // necessary because nvidia-smi and lspci need to be tried sequentially.
         command: ["sh", "-c", "nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || lspci 2>/dev/null | grep -i 'vga\\|3d\\|display' | head -1"]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -261,7 +264,7 @@ Singleton {
         id: gpuTypeCheck
 
         running: !Config.services.gpuType
-        command: ["sh", "-c", "if command -v nvidia-smi &>/dev/null && nvidia-smi -L &>/dev/null; then echo NVIDIA; elif ls /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null | grep -q .; then echo GENERIC; else echo NONE; fi"]
+        command: ["sh", "-c", "if command -v nvidia-smi &>/dev/null && nvidia-smi -L &>/dev/null; then echo NVIDIA; elif ls /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null | grep -q .; then echo GENERIC; else echo NONE; fi"] // hardcoded only, no user input
         stdout: StdioCollector {
             onStreamFinished: root.autoGpuType = text.trim()
         }

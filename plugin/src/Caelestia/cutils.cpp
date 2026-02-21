@@ -7,8 +7,25 @@
 #include <qfileinfo.h>
 #include <qfuturewatcher.h>
 #include <qqmlengine.h>
+#include <qstandardpaths.h>
 
 namespace caelestia {
+
+// Resolves the path canonically and checks it is under the user's home directory.
+// This prevents callers from using "../../../etc/passwd" style traversal to reach
+// files outside the user's home.
+bool CUtils::isPathWithinHome(const QString& localPath) {
+    const QString home = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    if (home.isEmpty()) {
+        qWarning() << "CUtils::isPathWithinHome: could not determine home directory";
+        return false;
+    }
+    // QFileInfo::absoluteFilePath() resolves symlinks partially; use canonicalPath()
+    // on the parent since the file may not exist yet.
+    const QFileInfo info(localPath);
+    const QString resolved = info.absoluteFilePath();
+    return resolved.startsWith(home + QLatin1Char('/')) || resolved == home;
+}
 
 void CUtils::saveItem(QQuickItem* target, const QUrl& path) {
     this->saveItem(target, path, QRect(), QJSValue(), QJSValue());
@@ -38,6 +55,11 @@ void CUtils::saveItem(QQuickItem* target, const QUrl& path, const QRect& rect, Q
 
     if (!path.isLocalFile()) {
         qWarning() << "CUtils::saveItem:" << path << "is not a local file";
+        return;
+    }
+
+    if (!isPathWithinHome(path.toLocalFile())) {
+        qWarning() << "CUtils::saveItem: rejected path outside home directory:" << path;
         return;
     }
 
@@ -100,6 +122,17 @@ bool CUtils::copyFile(const QUrl& source, const QUrl& target, bool overwrite) co
         return false;
     }
 
+    // Restrict both source and destination to within the home directory to prevent
+    // arbitrary file reads/overwrites via path traversal.
+    if (!isPathWithinHome(source.toLocalFile())) {
+        qWarning() << "CUtils::copyFile: rejected source outside home directory:" << source;
+        return false;
+    }
+    if (!isPathWithinHome(target.toLocalFile())) {
+        qWarning() << "CUtils::copyFile: rejected target outside home directory:" << target;
+        return false;
+    }
+
     if (overwrite && QFile::exists(target.toLocalFile())) {
         if (!QFile::remove(target.toLocalFile())) {
             qWarning() << "CUtils::copyFile: overwrite was specified but failed to remove" << target.toLocalFile();
@@ -113,6 +146,12 @@ bool CUtils::copyFile(const QUrl& source, const QUrl& target, bool overwrite) co
 bool CUtils::deleteFile(const QUrl& path) const {
     if (!path.isLocalFile()) {
         qWarning() << "CUtils::deleteFile: path" << path << "is not a local file";
+        return false;
+    }
+
+    // Restrict deletion to within the home directory to prevent arbitrary file deletion.
+    if (!isPathWithinHome(path.toLocalFile())) {
+        qWarning() << "CUtils::deleteFile: rejected path outside home directory:" << path;
         return false;
     }
 

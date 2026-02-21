@@ -82,7 +82,6 @@ Dependencies:
 -   [`libcava`](https://github.com/LukashonakV/cava)
 -   [`networkmanager`](https://networkmanager.dev)
 -   [`lm-sensors`](https://github.com/lm-sensors/lm-sensors)
--   [`fish`](https://github.com/fish-shell/fish-shell)
 -   [`aubio`](https://github.com/aubio/aubio)
 -   [`libpipewire`](https://pipewire.org)
 -   `glibc`
@@ -90,7 +89,6 @@ Dependencies:
 -   `gcc-libs`
 -   [`material-symbols`](https://fonts.google.com/icons)
 -   [`caskaydia-cove-nerd`](https://www.nerdfonts.com/font-downloads)
--   [`swappy`](https://github.com/jtheoof/swappy)
 -   [`libqalculate`](https://github.com/Qalculate/libqalculate)
 -   [`bash`](https://www.gnu.org/software/bash)
 -   `qt6-base`

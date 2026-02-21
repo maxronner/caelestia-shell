@@ -479,7 +479,20 @@ Singleton {
         }
         onLoaded: {
             try {
-                JSON.parse(text());
+                const parsed = JSON.parse(text());
+
+                // Validate that command-type config values are arrays of strings only.
+                // A tampered config could embed non-string values that cause unexpected behaviour
+                // in the process execution paths that spread these arrays.
+                const cmds = parsed?.general?.apps ?? {};
+                for (const key of ["terminal", "audio", "playback", "explorer"]) {
+                    const val = cmds[key];
+                    if (val !== undefined && (!Array.isArray(val) || val.some(e => typeof e !== "string"))) {
+                        console.warn(`Config: general.apps.${key} must be an array of strings — ignoring invalid value`);
+                        Toaster.toast(qsTr("Config warning"), qsTr("general.apps.%1 must be an array of strings").arg(key), "settings_alert", Toast.Warning);
+                    }
+                }
+
                 const elapsed = timer.elapsedMs();
                 // Only show toast for external changes (not our own saves) and when elapsed time is meaningful
                 if (adapter.utilities.toasts.configLoaded && !recentlySaved && elapsed > 0) {

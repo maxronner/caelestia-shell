@@ -13,18 +13,42 @@ Scope {
     required property Lock lock
     readonly property bool enabled: !Config.general.idle.inhibitWhenAudio || !Players.list.some(p => p.isPlaying)
 
+    // Allowlist of Hyprland dispatcher prefixes safe for idle actions.
+    readonly property list<string> allowedHyprDispatchers: ["dpms ", "screencast"]
+
+    // Allowlist of safe system command arrays for idle actions.
+    // First element (the executable) must be one of these.
+    readonly property list<string> allowedIdleCommands: [
+        "systemctl", "loginctl", "hyprlock", "swaylock", "brightnessctl"
+    ]
+
     function handleIdleAction(action: var): void {
         if (!action)
             return;
 
-        if (action === "lock")
+        if (action === "lock") {
             lock.lock.locked = true;
-        else if (action === "unlock")
+        } else if (action === "unlock") {
             lock.lock.locked = false;
-        else if (typeof action === "string")
+        } else if (typeof action === "string") {
+            // Only allow known-safe Hyprland dispatcher prefixes
+            const allowed = allowedHyprDispatchers.some(prefix => action.startsWith(prefix));
+            if (!allowed) {
+                console.warn("IdleMonitors: rejected disallowed Hyprland dispatch:", action);
+                return;
+            }
             Hypr.dispatch(action);
-        else
+        } else if (Array.isArray(action) && action.length > 0) {
+            // Only allow known-safe executables as the first element
+            const exe = action[0];
+            if (!allowedIdleCommands.includes(exe)) {
+                console.warn("IdleMonitors: rejected disallowed idle command:", exe);
+                return;
+            }
             Quickshell.execDetached(action);
+        } else {
+            console.warn("IdleMonitors: rejected unrecognised idle action type");
+        }
     }
 
     LogindManager {

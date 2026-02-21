@@ -163,9 +163,43 @@ Singleton {
         return state === "100 (connected)" || state === "connected" || state.startsWith("connected");
     }
 
+    // Maximum number of concurrent nmcli processes. Prevents resource exhaustion
+    // from rapid monitor events or retry loops spawning unbounded processes.
+    readonly property int maxConcurrentProcs: 8
+
     function executeCommand(args: list<string>, callback: var): void {
+        if (activeProcesses.length >= maxConcurrentProcs) {
+            console.warn("[NMCLI] Too many concurrent processes (" + activeProcesses.length + "), dropping command:", args.join(" "));
+            if (callback)
+                callback({ success: false, output: "", error: "Too many concurrent processes", exitCode: -1, needsPassword: false });
+            return;
+        }
+
         const proc = commandProc.createObject(root);
         proc.command = ["nmcli", ...args];
+        proc.callback = callback;
+
+        activeProcesses.push(proc);
+
+        proc.processFinished.connect(() => {
+            const index = activeProcesses.indexOf(proc);
+            if (index >= 0) {
+                activeProcesses.splice(index, 1);
+            }
+        });
+
+        Qt.callLater(() => {
+            proc.exec(proc.command);
+        });
+    }
+
+    // Pass the password to nmcli via stdin using --passwd-file -, avoiding
+    // exposure of the password in /proc/<pid>/cmdline.
+    function executeCommandWithPassword(args: list<string>, password: string, callback: var): void {
+        const proc = commandProc.createObject(root);
+        // nmcli reads "key-name:value\n" lines from --passwd-file
+        proc.stdinData = `wifi-sec.psk:${password}\n`;
+        proc.command = ["nmcli", "--passwd-file", "-", ...args];
         proc.callback = callback;
 
         activeProcesses.push(proc);
@@ -376,11 +410,13 @@ Singleton {
             return;
         }
 
-        let cmd = [root.nmcliCommandDevice, root.nmcliCommandWifi, "connect", ssid];
-        if (password && password.length > 0) {
-            cmd.push(root.connectionParamPassword, password);
-        }
-        executeCommand(cmd, result => {
+        const cmd = [root.nmcliCommandDevice, root.nmcliCommandWifi, "connect", ssid];
+        // Use executeCommandWithPassword to pass password via stdin (--passwd-file -)
+        // instead of as a command-line argument, to avoid /proc/cmdline exposure.
+        const execFn = (password && password.length > 0)
+            ? cb => executeCommandWithPassword(cmd, password, cb)
+            : cb => executeCommand(cmd, cb);
+        execFn(result => {
             if (result.needsPassword && callback) {
                 if (callback)
                     callback(result);
@@ -401,9 +437,10 @@ Singleton {
 
     function createConnectionWithPassword(ssid: string, bssidUpper: string, password: string, callback: var): void {
         checkAndDeleteConnection(ssid, () => {
-            const cmd = [root.nmcliCommandConnection, "add", root.connectionParamType, root.deviceTypeWifi, root.connectionParamConName, ssid, root.connectionParamIfname, "*", root.connectionParamSsid, ssid, root.connectionParamBssid, bssidUpper, root.securityKeyMgmt, root.keyMgmtWpaPsk, root.securityPsk, password];
+            // Do NOT include the password in the command array — pass via stdin instead.
+            const cmd = [root.nmcliCommandConnection, "add", root.connectionParamType, root.deviceTypeWifi, root.connectionParamConName, ssid, root.connectionParamIfname, "*", root.connectionParamSsid, ssid, root.connectionParamBssid, bssidUpper, root.securityKeyMgmt, root.keyMgmtWpaPsk];
 
-            executeCommand(cmd, result => {
+            executeCommandWithPassword(cmd, password, result => {
                 if (result.success) {
                     loadSavedConnections(() => {});
                     activateConnection(ssid, callback);
@@ -415,8 +452,8 @@ Singleton {
                         activateConnection(ssid, callback);
                     } else {
                         console.warn("[NMCLI] Connection profile creation failed, trying fallback...");
-                        let fallbackCmd = [root.nmcliCommandDevice, root.nmcliCommandWifi, "connect", ssid, root.connectionParamPassword, password];
-                        executeCommand(fallbackCmd, fallbackResult => {
+                        const fallbackCmd = [root.nmcliCommandDevice, root.nmcliCommandWifi, "connect", ssid];
+                        executeCommandWithPassword(fallbackCmd, password, fallbackResult => {
                             if (callback)
                                 callback(fallbackResult);
                         });
@@ -868,8 +905,21 @@ Singleton {
         property list<string> command: []
         property bool callbackCalled: false
         property int exitCode: 0
+        // Data to write to stdin after the process starts (used for passwords).
+        property string stdinData: ""
 
         signal processFinished
+
+        stdinEnabled: stdinData.length > 0
+
+        onStarted: {
+            if (stdinData.length > 0) {
+                write(stdinData);
+                // Close stdin after writing so the process doesn't block waiting
+                // for more input. Setting stdinEnabled to false closes the pipe.
+                stdinEnabled = false;
+            }
+        }
 
         environment: ({
                 LANG: "C.UTF-8",
